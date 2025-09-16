@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Expense Tracker</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <!-- Header Section -->
+    <header class="header">
+        <div class="container">
+            <div class="header__content">
+                <h1 class="header__title">💰 Smart Expense Tracker</h1>
+                <div class="header__stats">
+                    <div class="stat-card">
+                        <span class="stat-card__label">Total Balance</span>
+                        <span class="stat-card__value" id="totalBalance">₹0</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-card__label">Today's Spending</span>
+                        <span class="stat-card__value" id="todaySpending">₹0</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="main">
+        <div class="container">
+            <!-- Add Expense Section -->
+            <section class="add-expense">
+                <div class="card">
+                    <div class="card__header">
+                        <h3>Add New Expense</h3>
+                        <button class="btn btn--secondary btn--sm" id="voiceToggle">
+                            🎤 Voice Input
+                        </button>
+                    </div>
+                    <div class="card__body">
+                        <form id="expenseForm" class="expense-form">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label class="form-label" for="amount">Amount (₹)</label>
+                                    <input type="number" id="amount" class="form-control" placeholder="0" required min="0" step="0.01">
+                                </div>
+                                <div class="form-group form-group--wide">
+                                    <label class="form-label" for="description">Description</label>
+                                    <input type="text" id="description" class="form-control" placeholder="What did you spend on?" required>
+                                </div>
+                            </div>
+                            <div class="form-actions">
+                                <div class="category-preview">
+                                    <span class="category-label">Category:</span>
+                                    <span class="category-tag" id="categoryPreview">Others</span>
+                                </div>
+                                <button type="submit" class="btn btn--primary">Add Expense</button>
+                            </div>
+                        </form>
+                        
+                        <!-- Voice Input Interface -->
+                        <div class="voice-interface hidden" id="voiceInterface">
+                            <div class="voice-status">
+                                <div class="voice-indicator" id="voiceIndicator">
+                                    <span class="pulse"></span>
+                                </div>
+                                <p class="voice-text" id="voiceText">Say something like: "Coffee 50 rupees" or "Uber ride 200"</p>
+                            </div>
+                            <div class="voice-controls">
+                                <button class="btn btn--primary" id="startListening">Start Listening</button>
+                                <button class="btn btn--outline" id="stopListening" disabled>Stop</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Charts Section -->
+            <section class="charts-section">
+                <div class="section-header">
+                    <h2>Spending Overview</h2>
+                    <div class="chart-controls">
+                        <button class="btn btn--outline btn--sm chart-toggle active" data-period="daily">Daily</button>
+                        <button class="btn btn--outline btn--sm chart-toggle" data-period="weekly">Weekly</button>
+                    </div>
+                </div>
+                
+                <div class="charts-grid">
+                    <div class="chart-container">
+                        <div class="card">
+                            <div class="card__header">
+                                <h4 id="trendChartTitle">Daily Spending Trend</h4>
+                            </div>
+                            <div class="card__body">
+                                <div class="chart-wrapper" style="position: relative; height: 300px;">
+                                    <canvas id="trendChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="chart-container">
+                        <div class="card">
+                            <div class="card__header">
+                                <h4>Category Breakdown</h4>
+                            </div>
+                            <div class="card__body">
+                                <div class="chart-wrapper" style="position: relative; height: 300px;">
+                                    <canvas id="categoryChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Categories Section -->
+            <section class="categories-section">
+                <h2>Categories Overview</h2>
+                <div class="categories-grid" id="categoriesGrid">
+                    <!-- Categories will be populated by JavaScript -->
+                </div>
+            </section>
+
+            <!-- Recent Expenses Section -->
+            <section class="expenses-section">
+                <div class="section-header">
+                    <h2>Recent Expenses</h2>
+                    <div class="search-controls">
+                        <input type="text" class="form-control" id="searchExpenses" placeholder="Search expenses...">
+                    </div>
+                </div>
+                
+                <div class="expenses-list" id="expensesList">
+                    <!-- Expenses will be populated by JavaScript -->
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <!-- Success Toast -->
+    <div class="toast hidden" id="successToast">
+        <div class="toast__content">
+            <span class="toast__icon">✅</span>
+            <span class="toast__message">Expense added successfully!</span>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
