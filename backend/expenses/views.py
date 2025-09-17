@@ -6,30 +6,29 @@ from django.http import HttpResponse, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from django.conf import settings
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.response import Response
 
 class ExpenseManager:
-    def __init__(self):
-        # Create excel_files directory if it doesn't exist
+    def __init__(self, user_id):
+        # Create user-specific excel files directory
         self.excel_dir = os.path.join(settings.BASE_DIR, 'excel_files')
         if not os.path.exists(self.excel_dir):
             os.makedirs(self.excel_dir)
-        self.excel_file_path = os.path.join(self.excel_dir, 'expenses_data.xlsx')
+        # Create user-specific Excel file
+        self.excel_file_path = os.path.join(self.excel_dir, f'expenses_user_{user_id}.xlsx')
         
     def save_expense_to_excel(self, expense_data):
         """Save expense data to Excel file"""
         try:
-            # Try to read existing Excel file
             if os.path.exists(self.excel_file_path):
                 df = pd.read_excel(self.excel_file_path)
             else:
-                # Create new DataFrame if file doesn't exist
-                df = pd.DataFrame(columns=['id', 'amount', 'description', 'category', 'date', 'time'])
+                df = pd.DataFrame(columns=['id', 'amount', 'description', 'category', 'date', 'time', 'user_id'])
             
-            # Add new expense
             new_expense = pd.DataFrame([expense_data])
             df = pd.concat([df, new_expense], ignore_index=True)
-            
-            # Save to Excel
             df.to_excel(self.excel_file_path, index=False)
             return True
             
@@ -42,16 +41,12 @@ class ExpenseManager:
         try:
             if os.path.exists(self.excel_file_path):
                 df = pd.read_excel(self.excel_file_path)
-                # Convert NaN to empty strings and ensure proper data types
                 df = df.fillna('')
                 return df.to_dict('records')
             return []
         except Exception as e:
             print(f"Error reading from Excel: {e}")
             return []
-
-# Global expense manager instance
-expense_manager = ExpenseManager()
 
 def categorize_expense(description):
     """Auto-categorization logic using NLP keywords"""
@@ -76,18 +71,23 @@ def generate_expense_id():
     import time
     return int(time.time() * 1000)
 
-@csrf_exempt
-@require_http_methods(["POST"])
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def add_expense(request):
-    """API endpoint to add new expense"""
+    """API endpoint to add new expense - Now requires authentication"""
     try:
-        data = json.loads(request.body)
+        # Get the authenticated user
+        user = request.user
+        expense_manager = ExpenseManager(user.id)
         
-        # Validate required fields
+        data = request.data
+        
         if not data.get('amount') or not data.get('description'):
-            return JsonResponse({'status': 'error', 'message': 'Amount and description are required'})
+            return Response({
+                'status': 'error', 
+                'message': 'Amount and description are required'
+            }, status=400)
         
-        # Auto-categorize based on description
         category = categorize_expense(data.get('description', ''))
         
         expense_data = {
@@ -96,45 +96,55 @@ def add_expense(request):
             'description': data.get('description', '').strip(),
             'category': category,
             'date': datetime.now().strftime('%Y-%m-%d'),
-            'time': datetime.now().strftime('%H:%M')
+            'time': datetime.now().strftime('%H:%M'),
+            'user_id': user.id
         }
         
-        # Save to Excel file
         success = expense_manager.save_expense_to_excel(expense_data)
         
         if success:
-            return JsonResponse({
+            return Response({
                 'status': 'success', 
                 'expense': expense_data,
                 'message': 'Expense saved to Excel successfully!'
             })
         else:
-            return JsonResponse({'status': 'error', 'message': 'Failed to save expense to Excel'})
+            return Response({
+                'status': 'error', 
+                'message': 'Failed to save expense to Excel'
+            }, status=500)
             
-    except json.JSONDecodeError:
-        return JsonResponse({'status': 'error', 'message': 'Invalid JSON data'})
     except Exception as e:
-        return JsonResponse({'status': 'error', 'message': str(e)})
+        return Response({
+            'status': 'error', 
+            'message': str(e)
+        }, status=500)
 
-@require_http_methods(["GET"])
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def get_expenses(request):
-    """API endpoint to get all expenses"""
+    """API endpoint to get all expenses for authenticated user"""
     try:
+        user = request.user
+        expense_manager = ExpenseManager(user.id)
         expenses = expense_manager.get_expenses_from_excel()
-        print(f"Retrieved {len(expenses)} expenses from Excel")  # Debug log
-        return JsonResponse({'status': 'success', 'expenses': expenses})
+        print(f"Retrieved {len(expenses)} expenses for user {user.username}")
+        return Response({'status': 'success', 'expenses': expenses})
     except Exception as e:
-        print(f"Error in get_expenses: {e}")  # Debug log
-        return JsonResponse({'status': 'error', 'message': str(e)})
+        print(f"Error in get_expenses: {e}")
+        return Response({'status': 'error', 'message': str(e)}, status=500)
 
-@require_http_methods(["GET"])
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def get_expense_stats(request):
-    """API endpoint to get expense statistics"""
+    """API endpoint to get expense statistics for authenticated user"""
     try:
+        user = request.user
+        expense_manager = ExpenseManager(user.id)
         expenses = expense_manager.get_expenses_from_excel()
         
         if not expenses:
-            return JsonResponse({
+            return Response({
                 'status': 'success',
                 'stats': {
                     'total_expenses': 0,
@@ -145,19 +155,16 @@ def get_expense_stats(request):
                 }
             })
         
-        # Calculate statistics
         today = datetime.now().strftime('%Y-%m-%d')
         total_expenses = sum(float(exp.get('amount', 0)) for exp in expenses)
         today_expenses = sum(float(exp.get('amount', 0)) for exp in expenses if exp.get('date') == today)
         
-        # Category breakdown
         category_breakdown = {}
         for expense in expenses:
             category = expense.get('category', 'Others')
             amount = float(expense.get('amount', 0))
             category_breakdown[category] = category_breakdown.get(category, 0) + amount
         
-        # Recent expenses (last 10)
         recent_expenses = sorted(expenses, key=lambda x: str(x.get('date', '')) + str(x.get('time', '')), reverse=True)[:10]
         
         stats = {
@@ -168,35 +175,40 @@ def get_expense_stats(request):
             'total_count': len(expenses)
         }
         
-        return JsonResponse({'status': 'success', 'stats': stats})
+        return Response({'status': 'success', 'stats': stats})
     except Exception as e:
-        print(f"Error in get_expense_stats: {e}")  # Debug log
-        return JsonResponse({'status': 'error', 'message': str(e)})
+        return Response({'status': 'error', 'message': str(e)}, status=500)
 
-@require_http_methods(["GET"])
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def export_excel(request):
-    """API endpoint to download Excel file"""
+    """API endpoint to download Excel file for authenticated user"""
     try:
+        user = request.user
+        expense_manager = ExpenseManager(user.id)
+        
         if os.path.exists(expense_manager.excel_file_path):
             with open(expense_manager.excel_file_path, 'rb') as f:
                 response = HttpResponse(
                     f.read(),
                     content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
                 )
-                filename = f'expenses_export_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
+                filename = f'expenses_{user.username}_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
                 response['Content-Disposition'] = f'attachment; filename="{filename}"'
                 return response
         else:
-            return JsonResponse({'status': 'error', 'message': 'No expense data found'})
+            return Response({'status': 'error', 'message': 'No expense data found'}, status=404)
     except Exception as e:
-        return JsonResponse({'status': 'error', 'message': str(e)})
+        return Response({'status': 'error', 'message': str(e)}, status=500)
 
-# Test endpoint to check if backend is working
-@require_http_methods(["GET"])
+@api_view(['GET'])
+@permission_classes([AllowAny])  # Allow anyone to test connection
 def test_connection(request):
     """Test endpoint to verify backend is working"""
-    return JsonResponse({
+    return Response({
         'status': 'success',
         'message': 'Backend is working!',
+        'authenticated': request.user.is_authenticated,
+        'user': request.user.username if request.user.is_authenticated else None,
         'timestamp': datetime.now().isoformat()
     })

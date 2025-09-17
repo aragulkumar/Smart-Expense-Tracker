@@ -11,6 +11,58 @@ class ExpenseService {
             },
             timeout: 10000,
         });
+
+        // Add request interceptor to include auth token
+        this.api.interceptors.request.use(
+            (config) => {
+                const token = localStorage.getItem('accessToken');
+                if (token) {
+                    config.headers.Authorization = `Bearer ${token}`;
+                }
+                return config;
+            },
+            (error) => {
+                return Promise.reject(error);
+            }
+        );
+
+        // Add response interceptor to handle token expiration
+        this.api.interceptors.response.use(
+            (response) => response,
+            async (error) => {
+                if (error.response?.status === 401) {
+                    // Token expired, try to refresh or logout
+                    const refreshToken = localStorage.getItem('refreshToken');
+                    if (refreshToken) {
+                        try {
+                            const response = await axios.post(`${API_BASE_URL}/auth/refresh/`, {
+                                refresh: refreshToken
+                            });
+                            
+                            const newToken = response.data.access;
+                            localStorage.setItem('accessToken', newToken);
+                            
+                            // Retry the original request
+                            error.config.headers.Authorization = `Bearer ${newToken}`;
+                            return axios.request(error.config);
+                        } catch (refreshError) {
+                            // Refresh failed, logout user
+                            localStorage.removeItem('accessToken');
+                            localStorage.removeItem('refreshToken');
+                            localStorage.removeItem('userData');
+                            window.location.href = '/login';
+                        }
+                    } else {
+                        // No refresh token, logout user
+                        localStorage.removeItem('accessToken');
+                        localStorage.removeItem('refreshToken');
+                        localStorage.removeItem('userData');
+                        window.location.href = '/login';
+                    }
+                }
+                return Promise.reject(error);
+            }
+        );
     }
 
     async addExpense(expenseData) {
@@ -22,7 +74,7 @@ class ExpenseService {
             console.error('Error adding expense:', error);
             throw new Error(
                 error.response?.data?.message || 
-                'Failed to connect to backend. Make sure Django server is running on port 8000.'
+                'Failed to add expense. Please try again.'
             );
         }
     }
